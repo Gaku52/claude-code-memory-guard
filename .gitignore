@@ -1,4 +1,28 @@
+# Logs
 *.log
-*.bak
+
+# Config files (user-specific)
+*.env
+!config.env.sample
+
+# macOS
 .DS_Store
-/counter
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Editor directories
+.vscode/
+.idea/
+*.sublime-*
+
+# Test files
+test-output/

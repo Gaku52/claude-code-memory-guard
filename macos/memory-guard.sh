@@ -1,25 +1,31 @@
 #!/bin/bash
-# claude-code-memory-guard - Memory monitoring for Claude Code
+# claude-code-memory-guard - Memory monitoring for Claude Code (macOS)
 # https://github.com/Gaku52/claude-code-memory-guard
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="${HOME}/.claude/memory-guard-config.env"
-COUNTER_FILE="${HOME}/.claude/memory-guard-counter"
+CLAUDE_DIR="${HOME}/.claude"
+CONFIG_FILE="${CLAUDE_DIR}/memory-guard-config.env"
+COUNTER_FILE="${CLAUDE_DIR}/memory-guard-counter"
+LOG_FILE="${CLAUDE_DIR}/memory-guard.log"
 
-# Load defaults
+# --- Defaults ---
 MEMORY_GUARD_ENABLED=true
 WARNING_THRESHOLD_MB=4096
 CRITICAL_THRESHOLD_MB=8192
 CHECK_INTERVAL=5
-LOG_FILE="${HOME}/.claude/memory-guard.log"
 MAX_LOG_SIZE=1048576
+SYSTEM_FREE_WARN_PCT=20
+SYSTEM_FREE_CRIT_PCT=10
 
-# Load user config if exists
+# --- Load user config ---
 if [[ -f "$CONFIG_FILE" ]]; then
-  # shellcheck source=/dev/null
-  source "$CONFIG_FILE"
+  while IFS='=' read -r key value; do
+    key=$(echo "$key" | xargs)
+    [[ -z "$key" || "$key" == \#* ]] && continue
+    value=$(echo "$value" | xargs)
+    declare "$key=$value" 2>/dev/null || true
+  done < "$CONFIG_FILE"
 fi
 
 # Exit if disabled
@@ -38,8 +44,6 @@ if [[ $count -lt $CHECK_INTERVAL ]]; then
   echo "$count" > "$COUNTER_FILE"
   exit 0
 fi
-
-# Reset counter
 echo "0" > "$COUNTER_FILE"
 
 # --- Log rotation ---
@@ -53,7 +57,7 @@ fi
 # --- Memory measurement ---
 timestamp=$(date +"%Y-%m-%d %H:%M:%S")
 
-# Sum RSS of all node processes (in KB from ps, convert to MB)
+# Node.js RSS (KB -> MB)
 node_rss_kb=$(ps -eo rss,comm 2>/dev/null | grep -i node | awk '{sum += $1} END {print sum+0}')
 node_rss_mb=$((node_rss_kb / 1024))
 
@@ -76,10 +80,10 @@ elif [[ $node_rss_mb -ge $WARNING_THRESHOLD_MB ]] || [[ "$mem_pressure" == "warn
   status="WARNING"
 fi
 
-# --- Log entry ---
+# --- Log ---
 echo "[$timestamp] status=$status node_rss=${node_rss_mb}MB pressure=$mem_pressure" >> "$LOG_FILE"
 
-# --- Output only on WARNING/CRITICAL ---
+# --- Output (only on WARNING/CRITICAL) ---
 if [[ "$status" == "WARNING" ]]; then
   cat <<EOF
 {"additionalContext": "⚠️ MEMORY WARNING: Node processes using ${node_rss_mb}MB (threshold: ${WARNING_THRESHOLD_MB}MB). System pressure: ${mem_pressure}. Actions required: 1) Run /compact to reduce context 2) Use partial file reads (limit/offset) instead of full reads 3) Delegate work to Task subagents 4) Avoid reading large files entirely"}
